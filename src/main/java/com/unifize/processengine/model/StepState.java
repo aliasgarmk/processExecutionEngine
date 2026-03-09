@@ -8,20 +8,22 @@ public record StepState(
         String stepId,
         String assignedTo,
         StepStatus status,
-        Instant startedAt,
-        Instant completedAt,
+        Instant createdAt,      // set when PENDING step is activated
+        Instant openedAt,       // set when step transitions PENDING → IN_PROGRESS
+        Instant completedAt,    // set when step reaches a terminal status
         String participantId,
         long sequenceNumber
 ) {
     public StepState withStatus(StepStatus nextStatus, Instant timestamp) {
+        Instant newOpenedAt = (nextStatus == StepStatus.IN_PROGRESS && openedAt == null)
+                ? timestamp : openedAt;
+        Instant newCompletedAt = isTerminal(nextStatus) ? timestamp : completedAt;
         return new StepState(
-                stepStateId,
-                instanceId,
-                stepId,
-                assignedTo,
+                stepStateId, instanceId, stepId, assignedTo,
                 nextStatus,
-                startedAt,
-                isTerminal(nextStatus) ? timestamp : completedAt,
+                createdAt,
+                newOpenedAt,
+                newCompletedAt,
                 participantId,
                 sequenceNumber
         );

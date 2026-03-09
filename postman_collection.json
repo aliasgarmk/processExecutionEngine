@@ -1,0 +1,200 @@
+{
+  "info": {
+    "name": "Process Execution Engine",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Full walkthrough of the Process Execution Engine API.\n\nSequence:\n1. Register Users\n2. Load Definition\n3. Start Instance  ← saves instanceId to environment\n4. Open Step\n5. Advance Step\n6. Repeat 4-5 for each subsequent step\n7. Get Audit Trail"
+  },
+  "variable": [
+    { "key": "baseUrl",    "value": "http://localhost:8080" },
+    { "key": "instanceId", "value": "" },
+    { "key": "stepId",     "value": "initiation" }
+  ],
+  "item": [
+    {
+      "name": "1. Users",
+      "item": [
+        {
+          "name": "Register Carol (initiator)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/users",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"carol\",\n  \"displayName\": \"Carol Smith\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Register Alice (reviewer)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/users",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"alice\",\n  \"displayName\": \"Alice Nguyen\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Definitions",
+      "item": [
+        {
+          "name": "Load CAPA Workflow",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/definitions",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"definitionId\": \"capa\",\n  \"name\": \"CAPA Workflow\",\n  \"publishedBy\": \"admin\",\n  \"steps\": [\n    {\n      \"stepId\": \"initiation\",\n      \"stepType\": \"TASK\",\n      \"assigneeRule\": { \"type\": \"INITIATOR\" }\n    },\n    {\n      \"stepId\": \"review\",\n      \"stepType\": \"APPROVAL\",\n      \"assigneeRule\": { \"type\": \"USER_IDS\", \"userIds\": [\"alice\"] }\n    }\n  ],\n  \"routingRules\": [\n    {\n      \"sourceStepId\": \"initiation\",\n      \"defaultRoute\": true,\n      \"targetStepIds\": [\"review\"]\n    }\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Definition",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/definitions/capa"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Instances",
+      "item": [
+        {
+          "name": "Start Process  ← saves instanceId",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "pm.collectionVariables.set('instanceId', json.instanceId);",
+                  "pm.collectionVariables.set('stepId', json.activeStepIds[0]);",
+                  "console.log('instanceId saved:', json.instanceId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/instances",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"definitionId\": \"capa\",\n  \"initiatorId\": \"carol\",\n  \"fields\": { \"severity\": \"High\", \"description\": \"Pump calibration off by 3%\" }\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Instance",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/instances/{{instanceId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Step: initiation (TASK — carol)",
+      "item": [
+        {
+          "name": "Open Step",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/instances/{{instanceId}}/steps/initiation/open",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"actorId\": \"carol\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Advance Step — Submit",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.nextStepIds && json.nextStepIds.length > 0) {",
+                  "  pm.collectionVariables.set('stepId', json.nextStepIds[0]);",
+                  "  console.log('next stepId saved:', json.nextStepIds[0]);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/instances/{{instanceId}}/steps/initiation/advance",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"actorId\": \"carol\",\n  \"actionType\": \"SUBMIT\",\n  \"fields\": { \"rootCause\": \"Worn seal on pump inlet\" }\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Step: review (APPROVAL — alice)",
+      "item": [
+        {
+          "name": "Open Step",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/instances/{{instanceId}}/steps/review/open",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"actorId\": \"alice\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Advance Step — Approve",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/instances/{{instanceId}}/steps/review/advance",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"actorId\": \"alice\",\n  \"actionType\": \"APPROVE\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Advance Step — Reject (alternative)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/instances/{{instanceId}}/steps/review/advance",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"actorId\": \"alice\",\n  \"actionType\": \"REJECT\",\n  \"reason\": \"Root cause analysis incomplete\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Audit",
+      "item": [
+        {
+          "name": "Get Audit Trail",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/instances/{{instanceId}}/audit"
+          }
+        }
+      ]
+    }
+  ]
+}

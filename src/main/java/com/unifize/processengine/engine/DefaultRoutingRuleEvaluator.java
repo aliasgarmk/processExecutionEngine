@@ -16,10 +16,16 @@ public final class DefaultRoutingRuleEvaluator implements RoutingRuleEvaluator {
     }
 
     @Override
-    public List<String> resolveNextSteps(ProcessDefinition definition, String completedStepId, ProcessInstance instance) {
+    public List<String> resolveNextSteps(ProcessDefinition definition, String completedStepId,
+                                         ProcessInstance instance) {
         List<RoutingRule> rules = definition.routingRules().stream()
                 .filter(rule -> rule.sourceStepId().equals(completedStepId))
                 .toList();
+
+        // A step with no routing rules at all is a terminal step — return empty to signal process end.
+        if (rules.isEmpty()) {
+            return List.of();
+        }
 
         RoutingRule defaultRule = null;
         for (RoutingRule rule : rules) {
@@ -34,7 +40,11 @@ public final class DefaultRoutingRuleEvaluator implements RoutingRuleEvaluator {
         if (defaultRule != null) {
             return defaultRule.targetStepIds();
         }
-        return List.of();
+
+        // Rules exist but none matched and there is no default — this is a malformed definition.
+        throw new NoRoutingMatchException(
+                "No routing rule matched for step '" + completedStepId
+                + "' and no default route is declared. Check the definition for missing conditions.");
     }
 
     @Override

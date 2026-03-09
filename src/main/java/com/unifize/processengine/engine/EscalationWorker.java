@@ -5,11 +5,12 @@ import com.unifize.processengine.exception.InactiveInstanceException;
 import com.unifize.processengine.exception.InvalidTransitionException;
 import com.unifize.processengine.exception.OptimisticLockException;
 import com.unifize.processengine.exception.UnauthorisedTransitionException;
-import com.unifize.processengine.model.ActionType;
+import com.unifize.processengine.model.Action;
 import com.unifize.processengine.model.EscalationEvent;
 import com.unifize.processengine.model.ProcessInstance;
 import com.unifize.processengine.model.StepState;
 import com.unifize.processengine.model.StepStatus;
+import com.unifize.processengine.model.User;
 
 import java.util.List;
 
@@ -22,6 +23,9 @@ public final class EscalationWorker {
         this.stateStore = stateStore;
     }
 
+    /**
+     * Entry point for the message consumer. Idempotent — duplicate deliveries are silently discarded.
+     */
     public void handleEscalationEvent(EscalationEvent event)
             throws InactiveInstanceException, InvalidTransitionException, UnauthorisedTransitionException,
             FieldValidationException, OptimisticLockException {
@@ -31,30 +35,29 @@ public final class EscalationWorker {
         processEscalation(event);
     }
 
-    public boolean validateEscalationIsStillApplicable(EscalationEvent event) {
+    private boolean validateEscalationIsStillApplicable(EscalationEvent event) {
         ProcessInstance instance = stateStore.loadInstance(event.instanceId());
         if (!instance.isActive()) {
             return false;
         }
         List<StepState> stepStates = stateStore.loadStepStates(event.instanceId());
         return stepStates.stream()
-                .anyMatch(stepState -> stepState.stepStateId().equals(event.stepStateId())
-                        && stepState.status() == event.expectedStatus());
+                .anyMatch(s -> s.stepStateId().equals(event.stepStateId())
+                        && s.status() == event.expectedStatus());
     }
 
-    public void processEscalation(EscalationEvent event)
+    private void processEscalation(EscalationEvent event)
             throws InactiveInstanceException, InvalidTransitionException, UnauthorisedTransitionException,
             FieldValidationException, OptimisticLockException {
         StepState stepState = stateStore.loadStepStates(event.instanceId()).stream()
-                .filter(candidate -> candidate.stepStateId().equals(event.stepStateId()))
+                .filter(s -> s.stepStateId().equals(event.stepStateId()))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("Unknown step state: " + event.stepStateId()));
         processEngine.advanceStep(
                 event.instanceId(),
                 stepState.stepId(),
-                ActionType.ESCALATE,
-                InMemoryAuditWriter.SYSTEM_USER,
-                java.util.Map.of()
+                Action.escalate(event.reason()),
+                User.SYSTEM
         );
     }
 }

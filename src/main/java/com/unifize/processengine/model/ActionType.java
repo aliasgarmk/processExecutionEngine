@@ -6,5 +6,6 @@ public enum ActionType {
     REJECT,
     ESCALATE,
     REASSIGN,
-    REOPEN
+    REOPEN,
+    OPEN
 }

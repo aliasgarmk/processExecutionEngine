@@ -1,11 +1,11 @@
 package com.unifize.processengine;
 
-import com.unifize.processengine.engine.InMemoryAuditWriter;
 import com.unifize.processengine.engine.ProcessEngine;
 import com.unifize.processengine.engine.ProcessEngineFactory;
 import com.unifize.processengine.exception.DefinitionValidationException;
 import com.unifize.processengine.exception.FieldValidationException;
 import com.unifize.processengine.exception.OptimisticLockException;
+import com.unifize.processengine.model.Action;
 import com.unifize.processengine.model.ActionType;
 import com.unifize.processengine.model.AssigneeRule;
 import com.unifize.processengine.model.AuditEntry;
@@ -49,13 +49,15 @@ class ProcessEngineTest {
         ProcessEngineFactory.EngineRuntime runtime = ProcessEngineFactory.createInMemoryRuntime();
         ProcessEngine engine = runtime.processEngine();
 
-        ProcessDefinition v1 = engine.loadDefinition(sequentialDefinition("definition-a"));
+        engine.loadDefinition(sequentialDefinition("definition-a"));
+        int v1Version = runtime.definitionRegistry().resolveLatest("definition-a").version();
         ProcessInstance instance = engine.startProcess("definition-a", INITIATOR, Map.of("severity", "Minor"));
 
-        ProcessDefinition v2 = engine.loadDefinition(parallelDefinition("definition-a", QuorumMode.MAJORITY));
+        engine.loadDefinition(parallelDefinition("definition-a", QuorumMode.MAJORITY));
+        int v2Version = runtime.definitionRegistry().resolveLatest("definition-a").version();
 
-        assertEquals(1, v1.version());
-        assertEquals(2, v2.version());
+        assertEquals(1, v1Version);
+        assertEquals(2, v2Version);
         assertEquals(1, instance.definitionVersion());
     }
 
@@ -70,56 +72,34 @@ class ProcessEngineTest {
                 "investigator", INVESTIGATOR.userId()
         ));
 
+        engine.openStep(instance.instanceId(), "initiation", INITIATOR);
         StepResult initiationResult = engine.advanceStep(
-                instance.instanceId(),
-                "initiation",
-                ActionType.SUBMIT,
-                INITIATOR,
-                Map.of()
-        );
-
+                instance.instanceId(), "initiation", Action.submit(Map.of()), INITIATOR);
         assertEquals(List.of("investigation"), initiationResult.nextStepIds());
 
+        engine.openStep(instance.instanceId(), "investigation", INVESTIGATOR);
         StepResult investigationResult = engine.advanceStep(
-                instance.instanceId(),
-                "investigation",
-                ActionType.SUBMIT,
-                INVESTIGATOR,
-                Map.of("rootCause", "Supplier issue")
-        );
-
+                instance.instanceId(), "investigation",
+                Action.submit(Map.of("rootCause", "Supplier issue")), INVESTIGATOR);
         assertEquals(List.of("review"), investigationResult.nextStepIds());
 
+        engine.openStep(instance.instanceId(), "review", REVIEWER_1);
         StepResult firstApproval = engine.advanceStep(
-                instance.instanceId(),
-                "review",
-                ActionType.APPROVE,
-                REVIEWER_1,
-                Map.of()
-        );
-
+                instance.instanceId(), "review", Action.approve(), REVIEWER_1);
         assertTrue(firstApproval.nextStepIds().isEmpty());
         assertEquals(2, firstApproval.remainingParticipants().size());
 
+        engine.openStep(instance.instanceId(), "review", REVIEWER_2);
         StepResult secondApproval = engine.advanceStep(
-                instance.instanceId(),
-                "review",
-                ActionType.APPROVE,
-                REVIEWER_2,
-                Map.of()
-        );
-
+                instance.instanceId(), "review", Action.approve(), REVIEWER_2);
         assertEquals(List.of("implementation"), secondApproval.nextStepIds());
 
+        engine.openStep(instance.instanceId(), "implementation", IMPLEMENTER);
         StepResult completion = engine.advanceStep(
-                instance.instanceId(),
-                "implementation",
-                ActionType.SUBMIT,
-                IMPLEMENTER,
-                Map.of("actionTaken", "Supplier replaced")
-        );
-
+                instance.instanceId(), "implementation",
+                Action.submit(Map.of("actionTaken", "Supplier replaced")), IMPLEMENTER);
         assertTrue(completion.processCompleted());
+
         List<AuditEntry> auditEntries = engine.getAuditTrail(instance.instanceId());
         assertTrue(auditEntries.size() >= 6);
         assertAuditOrdered(auditEntries);
@@ -160,24 +140,14 @@ class ProcessEngineTest {
                 "investigator", INVESTIGATOR.userId()
         ));
 
-        engine.advanceStep(
-                instance.instanceId(),
-                "initiation",
-                ActionType.SUBMIT,
-                INITIATOR,
-                Map.of()
-        );
+        engine.openStep(instance.instanceId(), "initiation", INITIATOR);
+        engine.advanceStep(instance.instanceId(), "initiation", Action.submit(Map.of()), INITIATOR);
 
+        engine.openStep(instance.instanceId(), "investigation", INVESTIGATOR);
         Executable invalidAdvance = () -> engine.advanceStep(
-                instance.instanceId(),
-                "investigation",
-                ActionType.SUBMIT,
-                INVESTIGATOR,
-                Map.of()
-        );
+                instance.instanceId(), "investigation", Action.submit(Map.of()), INVESTIGATOR);
 
         FieldValidationException error = assertThrows(FieldValidationException.class, invalidAdvance);
-
         assertFalse(error.validationResult().isValid());
     }
 
@@ -188,13 +158,16 @@ class ProcessEngineTest {
         engine.loadDefinition(escalationDefinition("escalation"));
 
         ProcessInstance instance = engine.startProcess("escalation", INITIATOR, Map.of());
+        // Escalation is scheduled after openStep (step must be IN_PROGRESS first)
+        engine.openStep(instance.instanceId(), "triage", INITIATOR);
         assertEquals(1, runtime.escalationScheduler().getScheduledEvents().size());
 
         runtime.escalationWorker().handleEscalationEvent(runtime.escalationScheduler().getScheduledEvents().getFirst());
 
         List<AuditEntry> auditEntries = engine.getAuditTrail(instance.instanceId());
         assertTrue(auditEntries.stream().anyMatch(entry -> entry.actionType() == ActionType.ESCALATE));
-        assertTrue(runtime.eventPublisher().publishedEvents().stream().anyMatch(event -> event.startsWith("ESCALATION_TRIGGERED:")));
+        assertTrue(runtime.eventPublisher().publishedEvents().stream()
+                .anyMatch(event -> event.startsWith("ESCALATION_TRIGGERED:")));
     }
 
     @Test
@@ -207,10 +180,10 @@ class ProcessEngineTest {
         ProcessInstance firstLoad = runtime.stateStore().loadInstance(instance.instanceId());
         ProcessInstance staleLoad = runtime.stateStore().loadInstance(instance.instanceId());
 
-        firstLoad.setActiveStepIds(firstLoad.activeStepIds());
-        runtime.stateStore().updateInstance(firstLoad, List.of(), List.of());
+        runtime.stateStore().updateInstance(firstLoad, List.of());
 
-        assertThrows(OptimisticLockException.class, () -> runtime.stateStore().updateInstance(staleLoad, List.of(), List.of()));
+        assertThrows(OptimisticLockException.class,
+                () -> runtime.stateStore().updateInstance(staleLoad, List.of()));
     }
 
     private static void assertAuditOrdered(List<AuditEntry> auditEntries) {

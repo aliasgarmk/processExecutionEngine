@@ -1,6 +1,6 @@
 package com.unifize.processengine.engine;
 
-import com.unifize.processengine.model.ActionType;
+import com.unifize.processengine.model.Action;
 import com.unifize.processengine.model.ProcessInstance;
 import com.unifize.processengine.model.StepState;
 import com.unifize.processengine.model.User;
@@ -18,8 +18,9 @@ public final class InMemoryEventPublisher implements EventPublisher {
     }
 
     @Override
-    public void publishStepTransitioned(StepState stepState, ActionType action, User actor) {
-        events.add("STEP_TRANSITIONED:" + stepState.instanceId() + ":" + stepState.stepId() + ":" + action + ":" + actor.userId());
+    public void publishStepTransitioned(StepState stepState, Action action, User actor) {
+        events.add("STEP_TRANSITIONED:" + stepState.instanceId() + ":" + stepState.stepId()
+                + ":" + action.getType() + ":" + actor.userId());
     }
 
     @Override
@@ -29,10 +30,11 @@ public final class InMemoryEventPublisher implements EventPublisher {
 
     @Override
     public void publishEscalationTriggered(StepState stepState, User escalatedTo) {
-        events.add("ESCALATION_TRIGGERED:" + stepState.instanceId() + ":" + stepState.stepId() + ":" + escalatedTo.userId());
+        events.add("ESCALATION_TRIGGERED:" + stepState.instanceId() + ":" + stepState.stepId()
+                + ":" + escalatedTo.userId());
     }
 
-    @Override
+    /** Test/observation accessor — not part of the EventPublisher contract. */
     public List<String> publishedEvents() {
         return List.copyOf(events);
     }

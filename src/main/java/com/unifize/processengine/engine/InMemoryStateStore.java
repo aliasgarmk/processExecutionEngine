@@ -3,7 +3,6 @@ package com.unifize.processengine.engine;
 import com.unifize.processengine.exception.DuplicateInstanceException;
 import com.unifize.processengine.exception.InstanceNotFoundException;
 import com.unifize.processengine.exception.OptimisticLockException;
-import com.unifize.processengine.model.AuditEntry;
 import com.unifize.processengine.model.ProcessInstance;
 import com.unifize.processengine.model.StepState;
 
@@ -18,23 +17,22 @@ public final class InMemoryStateStore implements StateStore {
     }
 
     @Override
-    public void saveInstance(ProcessInstance instance, List<StepState> initialStepStates, List<AuditEntry> auditEntries)
+    public void saveInstance(ProcessInstance instance, List<StepState> initialStepStates)
             throws DuplicateInstanceException {
         synchronized (persistence) {
-            if (persistence.instances.containsKey(instance.instanceId())) {
+            if (persistence.containsInstance(instance.instanceId())) {
                 throw new DuplicateInstanceException("Duplicate instance: " + instance.instanceId());
             }
-            persistence.instances.put(instance.instanceId(), instance.copy());
+            persistence.putInstance(instance.instanceId(), instance);
             persistence.stepStates(instance.instanceId()).addAll(initialStepStates);
-            persistence.auditEntries(instance.instanceId()).addAll(auditEntries);
         }
     }
 
     @Override
-    public void updateInstance(ProcessInstance instance, List<StepState> stepStates, List<AuditEntry> auditEntries)
+    public void updateInstance(ProcessInstance instance, List<StepState> stepStates)
             throws OptimisticLockException {
         synchronized (persistence) {
-            ProcessInstance stored = persistence.instances.get(instance.instanceId());
+            ProcessInstance stored = persistence.getInstance(instance.instanceId());
             if (stored == null) {
                 throw new InstanceNotFoundException("Instance not found: " + instance.instanceId());
             }
@@ -42,11 +40,9 @@ public final class InMemoryStateStore implements StateStore {
                 throw new OptimisticLockException("Version conflict for instance: " + instance.instanceId());
             }
 
-            ProcessInstance updated = instance.copy();
-            updated.incrementVersion();
-            persistence.instances.put(updated.instanceId(), updated);
+            persistence.putInstance(instance.instanceId(), instance.withIncrementedVersion());
 
-            List<StepState> allStates = persistence.stepStates(updated.instanceId());
+            List<StepState> allStates = persistence.stepStates(instance.instanceId());
             for (StepState candidate : stepStates) {
                 int existingIndex = findStateIndex(allStates, candidate.stepStateId());
                 if (existingIndex >= 0) {
@@ -55,17 +51,16 @@ public final class InMemoryStateStore implements StateStore {
                     allStates.add(candidate);
                 }
             }
-            persistence.auditEntries(updated.instanceId()).addAll(auditEntries);
         }
     }
 
     @Override
     public ProcessInstance loadInstance(String instanceId) throws InstanceNotFoundException {
-        ProcessInstance stored = persistence.instances.get(instanceId);
+        ProcessInstance stored = persistence.getInstance(instanceId);
         if (stored == null) {
             throw new InstanceNotFoundException("Instance not found: " + instanceId);
         }
-        return stored.copy();
+        return stored;
     }
 
     @Override

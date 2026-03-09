@@ -4,10 +4,11 @@ import java.util.List;
 
 public record StepResult(
         String instanceId,
-        String stepId,
-        StepStatus resultingStatus,
+        String completedStepId,
+        StepStatus outcomeStatus,
         List<String> nextStepIds,
         List<String> remainingParticipants,
-        boolean processCompleted
+        boolean processCompleted,
+        AuditEntry auditEntry
 ) {
 }

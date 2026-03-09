@@ -2,82 +2,28 @@ package com.unifize.processengine.model;
 
 import java.time.Instant;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 
-public final class ProcessInstance {
-    private final String instanceId;
-    private final String definitionId;
-    private final int definitionVersion;
-    private final User initiator;
-    private final Instant createdAt;
-    private final Map<String, Object> fieldValues;
-    private final Set<String> activeStepIds;
-    private InstanceStatus status;
-    private long version;
-
-    public ProcessInstance(
-            String instanceId,
-            String definitionId,
-            int definitionVersion,
-            User initiator,
-            Map<String, Object> fieldValues,
-            Set<String> activeStepIds,
-            InstanceStatus status,
-            long version,
-            Instant createdAt
-    ) {
-        this.instanceId = Objects.requireNonNull(instanceId);
-        this.definitionId = Objects.requireNonNull(definitionId);
-        this.definitionVersion = definitionVersion;
-        this.initiator = Objects.requireNonNull(initiator);
-        this.fieldValues = new HashMap<>(fieldValues);
-        this.activeStepIds = new HashSet<>(activeStepIds);
-        this.status = Objects.requireNonNull(status);
-        this.version = version;
-        this.createdAt = Objects.requireNonNull(createdAt);
-    }
-
-    public ProcessInstance copy() {
-        return new ProcessInstance(instanceId, definitionId, definitionVersion, initiator, fieldValues, activeStepIds, status, version, createdAt);
-    }
-
-    public String instanceId() {
-        return instanceId;
-    }
-
-    public String definitionId() {
-        return definitionId;
-    }
-
-    public int definitionVersion() {
-        return definitionVersion;
-    }
-
-    public User initiator() {
-        return initiator;
-    }
-
-    public Map<String, Object> fieldValues() {
-        return fieldValues;
-    }
-
-    public Set<String> activeStepIds() {
-        return activeStepIds;
-    }
-
-    public InstanceStatus status() {
-        return status;
-    }
-
-    public long version() {
-        return version;
-    }
-
-    public Instant createdAt() {
-        return createdAt;
+/**
+ * Represents one running execution of a process definition.
+ * Immutable — all state transitions return a new instance.
+ * Mutations must go through the engine, never through direct field access.
+ */
+public record ProcessInstance(
+        String instanceId,
+        String definitionId,
+        int definitionVersion,
+        User initiator,
+        Map<String, Object> fieldValues,
+        Set<String> activeStepIds,
+        InstanceStatus status,
+        long version,
+        Instant createdAt
+) {
+    public ProcessInstance {
+        fieldValues = Map.copyOf(fieldValues);
+        activeStepIds = Set.copyOf(activeStepIds);
     }
 
     public Object getFieldValue(String fieldName) {
@@ -88,22 +34,33 @@ public final class ProcessInstance {
         return status == InstanceStatus.ACTIVE;
     }
 
-    public void putFieldValues(Map<String, Object> fields) {
-        fieldValues.putAll(fields);
+    public ProcessInstance withFieldValues(Map<String, Object> additionalFields) {
+        Map<String, Object> merged = new HashMap<>(fieldValues);
+        merged.putAll(additionalFields);
+        return new ProcessInstance(instanceId, definitionId, definitionVersion, initiator,
+                merged, activeStepIds, status, version, createdAt);
     }
 
-    public void setActiveStepIds(Set<String> stepIds) {
-        activeStepIds.clear();
-        activeStepIds.addAll(stepIds);
+    public ProcessInstance withActiveStepIds(Set<String> newActiveStepIds) {
+        return new ProcessInstance(instanceId, definitionId, definitionVersion, initiator,
+                fieldValues, newActiveStepIds, status, version, createdAt);
     }
 
-    public void completeIfNoActiveSteps() {
+    public ProcessInstance withStatus(InstanceStatus newStatus) {
+        return new ProcessInstance(instanceId, definitionId, definitionVersion, initiator,
+                fieldValues, activeStepIds, newStatus, version, createdAt);
+    }
+
+    public ProcessInstance withIncrementedVersion() {
+        return new ProcessInstance(instanceId, definitionId, definitionVersion, initiator,
+                fieldValues, activeStepIds, status, version + 1, createdAt);
+    }
+
+    /** Returns a COMPLETED copy if there are no remaining active steps; otherwise returns this. */
+    public ProcessInstance completeIfNoActiveSteps() {
         if (activeStepIds.isEmpty()) {
-            status = InstanceStatus.COMPLETED;
+            return withStatus(InstanceStatus.COMPLETED);
         }
-    }
-
-    public void incrementVersion() {
-        version++;
+        return this;
     }
 }

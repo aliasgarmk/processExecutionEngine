@@ -11,4 +11,10 @@ public interface ParallelQuorumChecker {
     boolean hasAnyRejection(List<StepState> participantStates);
 
     List<String> getRemainingParticipants(List<StepState> participantStates);
+
+    /**
+     * Returns a new list with the updated StepState replacing the record sharing its stepStateId.
+     * If no match is found the updated state is appended. Owned here so ProcessEngine stays thin.
+     */
+    List<StepState> mergeUpdatedState(List<StepState> existing, StepState updated);
 }

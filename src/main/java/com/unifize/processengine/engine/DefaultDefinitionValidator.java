@@ -1,6 +1,7 @@
 package com.unifize.processengine.engine;
 
 import com.unifize.processengine.exception.DefinitionValidationException;
+import com.unifize.processengine.model.FieldSchema;
 import com.unifize.processengine.model.ProcessDefinition;
 import com.unifize.processengine.model.RoutingRule;
 import com.unifize.processengine.model.StepDefinition;
@@ -15,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.regex.PatternSyntaxException;
 import java.util.stream.Collectors;
 
 public final class DefaultDefinitionValidator implements DefinitionValidator {
@@ -29,6 +31,26 @@ public final class DefaultDefinitionValidator implements DefinitionValidator {
         assertParallelStepsHaveQuorumPolicy(definition, violations);
         assertEverySourceHasSingleDefault(definition, violations);
 
+        if (!violations.isEmpty()) {
+            throw new DefinitionValidationException(violations);
+        }
+    }
+
+    @Override
+    public void compilePatterns(ProcessDefinition definition) throws DefinitionValidationException {
+        List<String> violations = new ArrayList<>();
+        for (StepDefinition step : definition.steps()) {
+            for (FieldSchema schema : step.fieldSchemas()) {
+                if (schema.regex() != null && !schema.regex().isBlank()) {
+                    try {
+                        schema.compiledPattern(); // triggers compilation; throws if invalid
+                    } catch (PatternSyntaxException e) {
+                        violations.add("Invalid regex on field '" + schema.name()
+                                + "' in step '" + step.stepId() + "': " + e.getDescription());
+                    }
+                }
+            }
+        }
         if (!violations.isEmpty()) {
             throw new DefinitionValidationException(violations);
         }

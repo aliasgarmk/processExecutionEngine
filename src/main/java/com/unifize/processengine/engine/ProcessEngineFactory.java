@@ -13,15 +13,18 @@ public final class ProcessEngineFactory {
         InMemoryPersistence persistence = new InMemoryPersistence();
         InMemoryEscalationScheduler escalationScheduler = new InMemoryEscalationScheduler();
         InMemoryDefinitionRegistry definitionRegistry = new InMemoryDefinitionRegistry(clockProvider);
-        InMemoryAuditWriter auditWriter = new InMemoryAuditWriter(sequenceGenerator, persistence);
+        InMemoryAuditWriter auditWriter = new InMemoryAuditWriter(sequenceGenerator, clockProvider, persistence);
         InMemoryStateStore stateStore = new InMemoryStateStore(persistence);
         InMemoryEventPublisher eventPublisher = new InMemoryEventPublisher();
+        InMemoryUserResolver userResolver = new InMemoryUserResolver();
+        DefaultStepActivator stepActivator = new DefaultStepActivator(
+                escalationScheduler, clockProvider, sequenceGenerator, userResolver);
 
         ProcessEngine processEngine = new ProcessEngine(
                 new DefaultDefinitionValidator(),
                 definitionRegistry,
                 new DefaultInstanceFactory(clockProvider),
-                new DefaultStepActivator(escalationScheduler, clockProvider, sequenceGenerator),
+                stepActivator,
                 new DefaultTransitionGuard(),
                 new DefaultFieldValidator(new DefaultExpressionEvaluator()),
                 new DefaultRoutingRuleEvaluator(new DefaultExpressionEvaluator()),
@@ -30,21 +33,30 @@ public final class ProcessEngineFactory {
                 stateStore,
                 escalationScheduler,
                 eventPublisher,
-                clockProvider
+                clockProvider,
+                userResolver
         );
 
         EscalationWorker escalationWorker = new EscalationWorker(processEngine, stateStore);
-        return new EngineRuntime(processEngine, definitionRegistry, stateStore, auditWriter, escalationScheduler, eventPublisher, escalationWorker);
+        return new EngineRuntime(processEngine, definitionRegistry, stateStore, auditWriter,
+                escalationScheduler, eventPublisher, escalationWorker, userResolver);
     }
 
+    /**
+     * The eventPublisher field is typed as InMemoryEventPublisher (not the interface) so that
+     * test code can call publishedEvents() without a cast. Production code should depend only
+     * on the EventPublisher interface.
+     * The userResolver is typed as InMemoryUserResolver so test code can call register().
+     */
     public record EngineRuntime(
             ProcessEngine processEngine,
             DefinitionRegistry definitionRegistry,
             StateStore stateStore,
             AuditWriter auditWriter,
             EscalationScheduler escalationScheduler,
-            EventPublisher eventPublisher,
-            EscalationWorker escalationWorker
+            InMemoryEventPublisher eventPublisher,
+            EscalationWorker escalationWorker,
+            InMemoryUserResolver userResolver
     ) {
     }
 }

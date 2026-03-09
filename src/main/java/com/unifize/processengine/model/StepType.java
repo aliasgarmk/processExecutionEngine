@@ -4,6 +4,7 @@ public enum StepType {
     TASK,
     APPROVAL,
     PARALLEL_APPROVAL,
+    REVIEW,
     CHECKLIST,
     SIGNATURE
 }

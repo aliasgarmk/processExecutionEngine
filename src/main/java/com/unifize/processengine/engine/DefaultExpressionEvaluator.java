@@ -1,5 +1,7 @@
 package com.unifize.processengine.engine;
 
+import com.unifize.processengine.exception.ExpressionEvaluationException;
+
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
@@ -53,7 +55,7 @@ public final class DefaultExpressionEvaluator implements ExpressionEvaluator {
             return !Objects.equals(normalize(context.get(parts[0].trim())), normalize(unquote(parts[1].trim())));
         }
 
-        throw new IllegalArgumentException("Unsupported expression clause: " + clause);
+        throw new ExpressionEvaluationException("Unsupported expression clause: " + clause);
     }
 
     private static Object normalize(Object value) {
