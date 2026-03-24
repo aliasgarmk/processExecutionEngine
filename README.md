@@ -2,7 +2,7 @@
 
 A Java 21 library that drives structured, multi-step business processes — CAPA workflows, approval chains, escalations, and parallel reviews — through a clean, LLD-aligned domain model.
 
-A Spring Boot 3 REST API layer wraps the engine so it can be called over HTTP without any Java integration work. This is done for testing purpoose only, Ideally Rest api layer should be part of business logic service which include this engine as maven depandancy.
+A Spring Boot 3 REST API layer wraps the engine so it can be called over HTTP without any Java integration work. Ideally Rest api layer should be part of business logic service which include this engine as maven depandancy.
 
 ## Requirements
 
